@@ -11,6 +11,7 @@ set -e
 #set -xe
 
 VERBOSE_PARAM=""
+SKIP_EXISTING=""
 SRC_PATH=$(dirname "$0")
 #SRC_PATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 POSITIONAL_ARGS=()
@@ -65,6 +66,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --verbose)
       VERBOSE_PARAM="--verbose"
+      shift # past argument with no value
+      ;;
+    --skip)
+      SKIP_EXISTING="--skip"
       shift # past argument with no value
       ;;
     -*|--*)
@@ -194,18 +199,18 @@ if [[ "$TYPE" == "heightmap" ]] || [[ "$TYPE" == "tifheightmap" ]]; then
         fi
       fi
       PIXEL_SIZE=$(printf "%.17g" $((40075016.68557848615314309804 / (2 ** $ZOOM * $TILE_SIZE))))
-      gdalwarp -of GTiff -co "COMPRESS=LZW" -co "BIGTIFF=YES" -co "PREDICTOR=2" -ot Int16 -co "SPARSE_OK=TRUE" \
+      gdalwarp -of GTiff -co "COMPRESS=LZW" -co "BIGTIFF=YES" -co "PREDICTOR=2" -ot Float32 -co "SPARSE_OK=TRUE" \
         -t_srs "+init=epsg:3857 +over" -r cubic -multi \
         -tr $PIXEL_SIZE $PIXEL_SIZE -tap \
-        "$WORK_PATH/${TYPE}_grid.tif" "$WORK_PATH/${TYPE}_mercator.tif"
+        "$WORK_PATH/${TYPE}_grid.tif" "$WORK_PATH/${TYPE}_ready.tif"
     fi
-    if [ ! -f "$WORK_PATH/${TYPE}_ready.tif" ]; then
-      echo "Translating..."
-      gdal_translate -of GTiff -strict \
-        -mo "AREA_OR_POINT=POINT" -ot Float32 \
-        -co "COMPRESS=LZW" -co "PREDICTOR=3" -co "BIGTIFF=YES" -co "SPARSE_OK=TRUE" -co "TILED=NO" \
-        "$WORK_PATH/${TYPE}_mercator.tif" "$WORK_PATH/${TYPE}_ready.tif"
-    fi
+    #if [ ! -f "$WORK_PATH/${TYPE}_ready.tif" ]; then
+    #  echo "Translating..."
+    #  gdal_translate -of GTiff -strict \
+    #    -mo "AREA_OR_POINT=POINT" -ot Float32 \
+    #    -co "COMPRESS=LZW" -co "PREDICTOR=3" -co "BIGTIFF=YES" -co "SPARSE_OK=TRUE" -co "TILED=NO" \
+    #    "$WORK_PATH/${TYPE}_mercator.tif" "$WORK_PATH/${TYPE}_ready.tif"
+    #fi
     if [[ "$TYPE" == "heightmap" ]]; then
       # Step 4. Slice giant projected GeoTIFF to tiles of specified size and downscale them
       echo "Slicing..."
@@ -223,7 +228,7 @@ if [[ "$TYPE" == "heightmap" ]] || [[ "$TYPE" == "tifheightmap" ]]; then
       echo "Generating tile GeoTIFFs..."
       "$SRC_PATH/tiler.py" --size=$TILE_FULL_SIZE --overlap=3 --zoom=9 --driver=GTiff \
         --driver-options="COMPRESS=LZW;PREDICTOR=3;SPARSE_OK=TRUE;TILED=YES;BLOCKXSIZE=80;BLOCKYSIZE=80" \
-        --extension=tif $VERBOSE_PARAM \
+        --extension=tif $VERBOSE_PARAM $SKIP_EXISTING \
         "$WORK_PATH/${TYPE}_ready.tif" "$OUTPUT_PATH"
     fi
 else
